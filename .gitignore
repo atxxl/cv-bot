@@ -1,0 +1,11 @@
+.dev.vars
+*.env
+.env*
+node_modules/
+dist/
+.wrangler/
+__pycache__/
+*.pyc
+.venv/
+evals/runs/*.tmp
+.DS_Store
