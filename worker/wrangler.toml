@@ -1,0 +1,36 @@
+# Cloudflare Worker configuration for cv-bot.
+#
+# Placeholders only. The owner replaces every <fill-in> locally or in the
+# Cloudflare dashboard; real ids are never committed.
+#
+# Secrets (ANTHROPIC_API_KEY) are NOT set here. Use:
+#   npx wrangler secret put ANTHROPIC_API_KEY
+# For local development put them in worker/.dev.vars (gitignored).
+
+name = "cv-bot"
+main = "src/index.ts"
+compatibility_date = "2026-10-01"
+account_id = "<fill-in>"
+
+# Rate limit state: per-IP counters, 10 questions / 10 minutes.
+[[kv_namespaces]]
+binding = "RATE_LIMIT"
+id = "<fill-in>"
+preview_id = "<fill-in>"
+
+# Spend cap state: monthly USD ceiling and running total.
+[[kv_namespaces]]
+binding = "SPEND"
+id = "<fill-in>"
+preview_id = "<fill-in>"
+
+[vars]
+# Non-secret configuration. Values here are visible in the repo on purpose.
+MODEL = "claude-haiku-4-5-20251001"
+MAX_TOKENS = "600"
+RATE_LIMIT_QUESTIONS = "10"
+RATE_LIMIT_WINDOW_SECONDS = "600"
+MONTHLY_SPEND_CAP_USD = "<fill-in>"
+
+[observability]
+enabled = true
