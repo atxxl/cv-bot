@@ -28,6 +28,25 @@ python evals/checks.py
 
 This is what CI runs on every pull request. `evals/` has no third-party Python dependencies.
 
+## Regenerate the material bundle
+
+The Worker does not read `material/` at runtime. `scripts/bundle_material.py` turns `material/*.md` (sorted by filename, `README.md` skipped) into `worker/src/material.ts`, which is committed. Every non-empty line gets a stable id `<file stem>#<n>`, where `n` counts the non-empty lines of that file, and `MATERIAL_HASH` is a short sha256 of the bundled sources.
+
+After any change under `material/`, from the repository root:
+
+```sh
+python scripts/bundle_material.py          # rewrites worker/src/material.ts
+python scripts/bundle_material.py --check  # exit 1 if material.ts is out of date
+```
+
+Commit the regenerated `material.ts` together with the material change. CI runs the `--check` form and the bundler's unit tests:
+
+```sh
+python -m unittest discover -s scripts -v
+```
+
+Do not edit `worker/src/material.ts` by hand; the next run overwrites it.
+
 ## Fill in the placeholders (owner only)
 
 `worker/wrangler.toml` ships with `<fill-in>` placeholders. Replace them locally; never commit real ids.

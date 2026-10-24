@@ -25,6 +25,7 @@ prompts/         the system prompt and the refusal rules, versioned
 worker/          Cloudflare Worker (TypeScript): key custody, rate limit, spend cap, model call
 web/             the chat widget embedded in the CV page (vanilla JS, no framework)
 evals/           the evaluation set and the runner (see below)
+scripts/         build helpers, e.g. the material bundler (`scripts/bundle_material.py`)
 docs/            architecture notes and decisions
 ```
 
