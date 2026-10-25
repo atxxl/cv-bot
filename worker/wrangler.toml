@@ -6,11 +6,23 @@
 # Secrets (ANTHROPIC_API_KEY) are NOT set here. Use:
 #   npx wrangler secret put ANTHROPIC_API_KEY
 # For local development put them in worker/.dev.vars (gitignored).
+#
+# Runtime switches live in the SPEND KV namespace, not here (see docs/setup.md):
+#   enabled         "1" or the bot answers nothing
+#   material_hash   must equal the MATERIAL_HASH bundled into the deployed Worker
+#   spend_cap_usd   monthly USD ceiling
+#   spend_<yyyy-mm> running total, written by the Worker
 
 name = "cv-bot"
 main = "src/index.ts"
 compatibility_date = "2026-10-01"
 account_id = "<fill-in>"
+
+# prompts/system.md is bundled into the Worker as a text module.
+[[rules]]
+type = "Text"
+globs = ["**/*.md"]
+fallthrough = true
 
 # Rate limit state: per-IP counters, 10 questions / 10 minutes.
 [[kv_namespaces]]
@@ -18,7 +30,7 @@ binding = "RATE_LIMIT"
 id = "<fill-in>"
 preview_id = "<fill-in>"
 
-# Spend cap state: monthly USD ceiling and running total.
+# Spend cap state: switches, monthly USD ceiling and running total.
 [[kv_namespaces]]
 binding = "SPEND"
 id = "<fill-in>"
@@ -30,7 +42,8 @@ MODEL = "claude-haiku-4-5-20251001"
 MAX_TOKENS = "600"
 RATE_LIMIT_QUESTIONS = "10"
 RATE_LIMIT_WINDOW_SECONDS = "600"
-MONTHLY_SPEND_CAP_USD = "<fill-in>"
+# The only origin allowed to call the Worker from a browser.
+ALLOWED_ORIGIN = "https://atxxl.github.io"
 
 [observability]
 enabled = true

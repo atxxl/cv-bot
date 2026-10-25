@@ -32,3 +32,23 @@ jobs:
         run: python -m unittest discover -s scripts -p "test_*.py" -v
       - name: worker/src/material.ts is up to date with material/
         run: python scripts/bundle_material.py --check
+
+  worker:
+    name: worker (typecheck + tests)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: worker
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: worker/package-lock.json
+      - name: Install
+        run: npm ci
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Tests (Workers runtime via @cloudflare/vitest-plugin)
+        run: npm test
