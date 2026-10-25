@@ -1,5 +1,6 @@
 import { KV_KEYS, MAX_QUESTION_CHARS } from "../src/config";
 import { ANTHROPIC_MESSAGES_URL, ANTHROPIC_VERSION } from "../src/model";
+import { MATERIAL_CACHE_CONTROL } from "../src/worker";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   ALLOWED_ORIGIN,
@@ -37,6 +38,8 @@ describe("routing", () => {
     ["GET", "/"],
     ["GET", "/ask"],
     ["POST", "/material-hash"],
+    ["POST", "/material"],
+    ["GET", "/material/extra"],
     ["GET", "/nope"],
     ["POST", "/ask/extra"],
     ["DELETE", "/ask"],
@@ -53,6 +56,110 @@ describe("routing", () => {
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ hash: FAKE_HASH });
     expect(res.headers.get("cache-control")).toBe("no-store");
+  });
+});
+
+describe("GET /material", () => {
+  it("returns the bundled hash and every line with its id, without touching the model", async () => {
+    const model = fakeModel();
+    const res = await call(worker({ fetch: model.fetch }), request("/material"), testEnv());
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ hash: FAKE_HASH, lines: FAKE_MATERIAL });
+    expect(model.calls).toHaveLength(0);
+  });
+
+  it("reports the same hash as /ask and /material-hash", async () => {
+    const env = testEnv();
+    await enableBot(env);
+    const handler = worker({ fetch: fakeModel().fetch });
+    const material = (await (await call(handler, request("/material"), env)).json()) as { hash: string };
+    const hashOnly = (await (await call(handler, request("/material-hash"), env)).json()) as { hash: string };
+    const asked = await askJson(await call(handler, askRequest("What was built?"), env));
+    expect(material.hash).toBe(FAKE_HASH);
+    expect(hashOnly.hash).toBe(FAKE_HASH);
+    expect(asked.material_hash).toBe(FAKE_HASH);
+  });
+
+  it("is JSON, cacheable for an hour, and varies on Origin", async () => {
+    const res = await call(worker(), request("/material"), testEnv());
+    expect(res.headers.get("content-type")).toContain("application/json");
+    expect(res.headers.get("x-content-type-options")).toBe("nosniff");
+    expect(res.headers.get("cache-control")).toBe(MATERIAL_CACHE_CONTROL);
+    expect(MATERIAL_CACHE_CONTROL).toBe("public, max-age=3600");
+    expect(res.headers.get("vary")).toBe("Origin");
+  });
+
+  it("answers the allowed origin with Access-Control-Allow-Origin", async () => {
+    const res = await call(worker(), request("/material"), testEnv());
+    expect(res.status).toBe(200);
+    expect(res.headers.get("access-control-allow-origin")).toBe(ALLOWED_ORIGIN);
+  });
+
+  it("rejects any other origin with 403 and does not leak a line", async () => {
+    const res = await call(worker(), request("/material", {}, { origin: OTHER_ORIGIN }), testEnv());
+    expect(res.status).toBe(403);
+    expect(res.headers.get("access-control-allow-origin")).toBeNull();
+    const text = await res.text();
+    for (const line of FAKE_MATERIAL) {
+      expect(text).not.toContain(line.id);
+      expect(text).not.toContain(line.text);
+    }
+  });
+
+  it("serves a request without an Origin header without CORS headers, still varying on Origin", async () => {
+    const res = await call(worker(), request("/material", {}, { origin: null }), testEnv());
+    expect(res.status).toBe(200);
+    expect(res.headers.get("access-control-allow-origin")).toBeNull();
+    expect(res.headers.get("vary")).toBe("Origin");
+    expect(res.headers.get("cache-control")).toBe(MATERIAL_CACHE_CONTROL);
+  });
+
+  it("answers the preflight for the allowed origin", async () => {
+    const res = await call(worker(), request("/material", { method: "OPTIONS" }), testEnv());
+    expect(res.status).toBe(204);
+    expect(res.headers.get("access-control-allow-origin")).toBe(ALLOWED_ORIGIN);
+    expect(res.headers.get("access-control-allow-methods")).toContain("GET");
+  });
+
+  it("needs no switches, no KV and no client IP", async () => {
+    const env = testEnv(); // nothing enabled in KV, no key needed
+    const broken = { ...env, SPEND: unreadableKv(env.SPEND), RATE_LIMIT: unreadableKv(env.RATE_LIMIT) };
+    const res = await call(worker(), request("/material"), broken); // request() sets no cf-connecting-ip
+    expect(res.status).toBe(200);
+    expect(((await res.json()) as { hash: string }).hash).toBe(FAKE_HASH);
+  });
+
+  it("is not rate limited: still answers an IP that has used up its /ask slots", async () => {
+    const env = testEnv();
+    await enableBot(env);
+    const c = clock();
+    const model = fakeModel();
+    const handler = worker({ fetch: model.fetch, now: c.now });
+    for (let i = 0; i < 10; i++) {
+      c.t += 1000;
+      expect((await call(handler, askRequest("Q?", { ip: IP_A }), env)).status).toBe(200);
+    }
+    c.t += 1000;
+    expect((await call(handler, askRequest("Q?", { ip: IP_A }), env)).status).toBe(429);
+    const res = await call(handler, request("/material", { headers: { "cf-connecting-ip": IP_A } }), env);
+    expect(res.status).toBe(200);
+    expect(model.calls).toHaveLength(10);
+  });
+
+  it("writes nothing to KV and logs nothing", async () => {
+    const env = testEnv();
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+    const res = await call(worker(), request("/material"), env);
+    expect(res.status).toBe(200);
+    expect(log).not.toHaveBeenCalled();
+    expect((await env.SPEND.list()).keys).toEqual([]);
+    expect((await env.RATE_LIMIT.list()).keys).toEqual([]);
+  });
+
+  it("returns an empty list for an empty bundle", async () => {
+    const res = await call(worker({ material: [] }), request("/material"), testEnv());
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ hash: FAKE_HASH, lines: [] });
   });
 });
 
@@ -110,6 +217,47 @@ describe("CORS", () => {
     await enableBot(env);
     const model = fakeModel();
     const res = await call(worker({ fetch: model.fetch }), askRequest("What was built?"), env);
+    expect(res.status).toBe(403);
+    expect(model.calls).toHaveLength(0);
+  });
+
+  it.each(["http://localhost:8000", "http://localhost", "http://127.0.0.1:8000", "http://[::1]:8000"])(
+    "accepts %s as ALLOWED_ORIGIN over plain http (local demo page against wrangler dev)",
+    async (local) => {
+      const env = testEnv({ ALLOWED_ORIGIN: local });
+      await enableBot(env);
+      const res = await call(worker({ fetch: fakeModel().fetch }), askRequest("What was built?", { origin: local }), env);
+      expect(res.status).toBe(200);
+      expect(res.headers.get("access-control-allow-origin")).toBe(local);
+      const material = await call(worker(), request("/material", {}, { origin: local }), env);
+      expect(material.status).toBe(200);
+      expect(material.headers.get("access-control-allow-origin")).toBe(local);
+    },
+  );
+
+  it("still rejects other origins when ALLOWED_ORIGIN is a local http origin", async () => {
+    const env = testEnv({ ALLOWED_ORIGIN: "http://localhost:8000" });
+    await enableBot(env);
+    const model = fakeModel();
+    for (const origin of [OTHER_ORIGIN, ALLOWED_ORIGIN, "http://localhost:8001", "null"]) {
+      const res = await call(worker({ fetch: model.fetch }), askRequest("What was built?", { origin }), env);
+      expect(res.status, origin).toBe(403);
+    }
+    expect(model.calls).toHaveLength(0);
+  });
+
+  it.each([
+    "http://atxxl.github.io",
+    "http://example.com:8000",
+    "http://localhost.evil.example",
+    "http://evil.example/localhost",
+    "https://atxxl.github.io/",
+    "ftp://localhost",
+  ])("fails closed when ALLOWED_ORIGIN is %s (not https, not a bare localhost origin)", async (bad) => {
+    const env = testEnv({ ALLOWED_ORIGIN: bad });
+    await enableBot(env);
+    const model = fakeModel();
+    const res = await call(worker({ fetch: model.fetch }), askRequest("What was built?", { origin: bad }), env);
     expect(res.status).toBe(403);
     expect(model.calls).toHaveLength(0);
   });
