@@ -109,13 +109,32 @@ cd worker
 npm run dev
 ```
 
-`wrangler dev` uses the `preview_id` namespaces and `.dev.vars` for the key. `/ask` requires the `CF-Connecting-IP` header and only answers requests whose `Origin` is `https://atxxl.github.io` or absent; for example:
+`wrangler dev` uses the `preview_id` namespaces and `.dev.vars` for the key. `/ask` requires the `CF-Connecting-IP` header (`wrangler dev` sets it itself from the connecting socket, so neither `curl` nor a browser has to) and only answers requests whose `Origin` is `https://atxxl.github.io` or absent; for example:
 
 ```sh
-curl -s localhost:8787/ask -H 'content-type: application/json' -H 'cf-connecting-ip: 127.0.0.1' \
-  -d '{"question": "What is in the material?"}'
+curl -s localhost:8787/ask -H 'content-type: application/json' -d '{"question": "What is in the material?"}'
 curl -s localhost:8787/material-hash
+curl -s localhost:8787/material
 ```
+
+## Try the widget locally
+
+`web/demo.html` is a placeholder page (no CV content) that mounts the widget against `http://localhost:8787`. A browser sends an `Origin` header with every question and the Worker only answers its `ALLOWED_ORIGIN`, so the page cannot simply be opened from `file://` (origin `null`, refused): serve `web/` over http and let the Worker allow that origin for this run. `ALLOWED_ORIGIN` must be `https`, except that `localhost` and `127.0.0.1` may be plain `http`; that exception exists for exactly this.
+
+Terminal 1, the Worker, with the page's origin in place of the one in `wrangler.toml` (`--var` overrides a `[vars]` entry for this run only; a line `ALLOWED_ORIGIN=http://localhost:8000` in `.dev.vars` does the same permanently):
+
+```sh
+cd worker
+npx wrangler dev --var ALLOWED_ORIGIN:http://localhost:8000
+```
+
+Terminal 2, the page:
+
+```sh
+python3 -m http.server 8000 --directory web
+```
+
+Open <http://localhost:8000/demo.html>. `CF-Connecting-IP` needs nothing from you: `wrangler dev` sets it from the connecting socket (`127.0.0.1` or `::1`), so the rate limit counts your browser as one IP. Without an API key in `.dev.vars`, or with the `--preview` switches unset, every question comes back as "Not available right now."; that is the Worker failing closed, and it still exercises the request path, the refusal rendering and `GET /material`. With the key and the switches set, answers render with their citations as expandable quotes and the material version under them.
 
 ## Deploy (owner only)
 
@@ -134,6 +153,7 @@ After a deploy that changed `material/`, update the pin or the bot stays off. Or
 | `POST /ask` `{"question": "..."}` (max 500 characters) | `200 {"answer", "citations": ["mai#3", ...], "refused": false, "material_hash"}` |
 | same, refused (bad input `400`, origin `403`, rate limit `429`, everything else `503`) | `{"answer": "<short reason or Not available right now.>", "citations": [], "refused": true, "material_hash"}` |
 | `GET /material-hash` | `200 {"hash": "..."}` |
+| `GET /material` | `200 {"hash": "...", "lines": [{"id": "mai#1", "text": "..."}, ...]}`, the whole bundled material; `cache-control: public, max-age=3600`; no rate limit, no log line |
 | anything else | `404` |
 
 The Worker logs one JSON line per `/ask`: question length, refusal flag and reason, latency, token counts, cost. Never the question or the answer.

@@ -1,0 +1,88 @@
+/* cv-bot widget v1. Everything is scoped to #cv-bot. System fonts only; no
+ * external resources. Colours are chosen for at least 4.5:1 contrast. */
+#cv-bot {
+  box-sizing: border-box;
+  max-width: 40rem;
+  margin: 1.5rem 0;
+  padding: 1rem 1.25rem;
+  border: 1px solid #c9ced6;
+  border-radius: 8px;
+  background: #fff;
+  color: #1c1e21;
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  font-size: 1rem;
+  line-height: 1.5;
+}
+#cv-bot *,
+#cv-bot *::before,
+#cv-bot *::after { box-sizing: inherit; }
+#cv-bot p { margin: 0; }
+
+.cvb-form { margin: 0; }
+.cvb-label { display: block; margin-bottom: 0.4rem; font-weight: 600; }
+.cvb-row { display: flex; gap: 0.5rem; }
+.cvb-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 0.55rem 0.7rem;
+  border: 1px solid #6b7280;
+  border-radius: 6px;
+  background: #fff;
+  color: inherit;
+  font: inherit;
+}
+.cvb-send {
+  flex: 0 0 auto;
+  padding: 0.55rem 1rem;
+  border: 1px solid #1d4ed8;
+  border-radius: 6px;
+  background: #1d4ed8;
+  color: #fff;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+.cvb-send:hover:not(:disabled) { background: #1e40af; border-color: #1e40af; }
+.cvb-send:disabled { opacity: 0.55; cursor: not-allowed; }
+.cvb-input:focus-visible,
+.cvb-send:focus-visible,
+.cvb-cite summary:focus-visible { outline: 3px solid #1d4ed8; outline-offset: 2px; }
+
+.cvb-count { margin-top: 0.35rem; font-size: 0.85rem; color: #4b5563; }
+.cvb-count.cvb-over { color: #b91c1c; font-weight: 600; }
+
+.cvb-asked { margin-top: 1rem; color: #4b5563; overflow-wrap: anywhere; }
+.cvb-asked-label { font-weight: 600; }
+.cvb-asked:empty,
+.cvb-answer:empty { display: none; }
+
+.cvb-answer { margin-top: 0.5rem; padding: 0.85rem 1rem; border-radius: 6px; background: #f3f4f6; }
+.cvb-text { white-space: pre-wrap; overflow-wrap: anywhere; }
+.cvb-note { color: #374151; }
+
+.cvb-cites { margin-top: 0.75rem; padding-top: 0.6rem; border-top: 1px solid #d1d5db; }
+.cvb-cites-title { margin-bottom: 0.25rem; font-size: 0.85rem; font-weight: 600; color: #374151; }
+.cvb-cite { margin: 0.2rem 0; font-size: 0.9rem; }
+.cvb-cite summary,
+.cvb-cite-bare,
+.cvb-hash code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+  font-size: 0.85rem;
+}
+.cvb-cite summary { padding: 0.15rem 0.25rem; border-radius: 4px; color: #1e3a8a; cursor: pointer; }
+.cvb-cite-bare { padding: 0.15rem 0.25rem; color: #4b5563; }
+.cvb-cite blockquote {
+  margin: 0.3rem 0 0.5rem;
+  padding: 0.4rem 0.75rem;
+  border-left: 3px solid #9ca3af;
+  color: #1f2937;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.cvb-hash { margin-top: 0.6rem; font-size: 0.8rem; color: #4b5563; }
+.cvb-footer { margin-top: 0.9rem; font-size: 0.85rem; color: #4b5563; }
+
+@media (max-width: 26rem) {
+  .cvb-row { flex-direction: column; }
+}

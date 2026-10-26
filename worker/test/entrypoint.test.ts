@@ -4,13 +4,20 @@
 
 import { SELF } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
-import { MATERIAL_HASH } from "../src/material";
+import { MATERIAL, MATERIAL_HASH } from "../src/material";
 
 describe("entrypoint", () => {
   it("serves the bundled material hash", async () => {
     const res = await SELF.fetch("https://cv-bot.example/material-hash");
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ hash: MATERIAL_HASH });
+  });
+
+  it("serves the bundled material under the same hash, cacheable", async () => {
+    const res = await SELF.fetch("https://cv-bot.example/material");
+    expect(res.status).toBe(200);
+    expect(res.headers.get("cache-control")).toBe("public, max-age=3600");
+    expect(await res.json()).toEqual({ hash: MATERIAL_HASH, lines: MATERIAL });
   });
 
   it("returns 404 for anything else", async () => {

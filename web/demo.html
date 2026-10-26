@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>cv-bot widget demo</title>
+  <meta name="description" content="Local demo page for the cv-bot widget. Placeholder text only.">
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="widget.css">
+  <style>
+    body {
+      max-width: 44rem;
+      margin: 2rem auto;
+      padding: 0 1rem;
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+      line-height: 1.5;
+      color: #1c1e21;
+      background: #fff;
+    }
+    code { font-size: 0.95em; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Widget demo</h1>
+    <p>
+      Placeholder page. On the real CV page this is where the CV text would be; here it only gives the
+      widget some context to sit in. Nothing on this page says anything about the owner.
+    </p>
+    <p>
+      The widget below talks to a local Worker at <code>http://localhost:8787</code>.
+      <code>docs/setup.md</code> ("Try the widget locally") explains how to run both.
+    </p>
+
+    <div id="cv-bot" data-worker-url="http://localhost:8787"></div>
+
+    <p>More placeholder text after the widget, so the layout around it can be checked.</p>
+  </main>
+  <script src="widget.js" defer></script>
+</body>
+</html>

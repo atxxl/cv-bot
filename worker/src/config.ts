@@ -61,7 +61,13 @@ function positiveInt(name: string, raw: string | undefined): number {
   return n;
 }
 
-/** ALLOWED_ORIGIN, validated: an https origin with no path. Read on every request, before anything else. */
+/** Hosts that may be allowed over plain http: a local demo page against `wrangler dev` (docs/setup.md). */
+const LOCAL_HOSTS: ReadonlySet<string> = new Set(["localhost", "127.0.0.1", "[::1]"]);
+
+/**
+ * ALLOWED_ORIGIN, validated: an https origin with no path, or an http origin
+ * on localhost for local development. Read on every request, before anything else.
+ */
 export function readAllowedOrigin(env: Env): string {
   const raw = env.ALLOWED_ORIGIN;
   if (!raw) throw new ConfigError("ALLOWED_ORIGIN is not set");
@@ -71,8 +77,10 @@ export function readAllowedOrigin(env: Env): string {
   } catch {
     throw new ConfigError("ALLOWED_ORIGIN is not a valid origin");
   }
-  if (parsed.origin !== raw || parsed.protocol !== "https:") {
-    throw new ConfigError("ALLOWED_ORIGIN must be an https origin without a path");
+  if (parsed.origin !== raw) throw new ConfigError("ALLOWED_ORIGIN must be an origin without a path");
+  const localHttp = parsed.protocol === "http:" && LOCAL_HOSTS.has(parsed.hostname);
+  if (parsed.protocol !== "https:" && !localHttp) {
+    throw new ConfigError("ALLOWED_ORIGIN must be an https origin (http is allowed for localhost only)");
   }
   return raw;
 }
