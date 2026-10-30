@@ -5,7 +5,7 @@ How to get a clean machine from `git clone` to a working local Worker.
 ## Prerequisites
 
 - Node.js 20 or newer (`node --version`)
-- Python 3.11 or newer (`python3 --version`), only needed for `evals/`
+- Python 3.11 or newer (`python3 --version`), only needed for `evals/` and `scripts/`
 - A Cloudflare account (owner only; needed to deploy, not to run the evals)
 
 ## Clone and install
@@ -23,10 +23,24 @@ cd worker && npm install
 From the repository root:
 
 ```sh
-python evals/checks.py
+python -m unittest discover -s evals -p "test_*.py" -v   # unit tests of the eval scripts
+python evals/checks.py                                    # question set, forbidden list, newest committed run
 ```
 
-This is what CI runs on every pull request. `evals/` has no third-party Python dependencies.
+This is what CI runs on every pull request. Both need only the standard library. `checks.py` without arguments reports the newest run under `evals/runs/` and gates only on malformed input; `python evals/checks.py evals/runs/<file>.jsonl` exits 1 if any hard check fails.
+
+## Run the evals
+
+Running the questions against the model and judging the answers needs the `anthropic` package and an API key in the environment variable `CVBOT_API_KEY` (`ANTHROPIC_API_KEY` works as a local fallback). The key lives only in the environment: never in a file, never printed.
+
+```sh
+pip install -r evals/requirements.txt
+python evals/run.py --direct                     # same request the Worker sends; writes evals/runs/<date>-<sha>.jsonl
+python evals/checks.py evals/runs/<file>.jsonl   # the pass table for the PR description
+python evals/judge.py evals/runs/<file>.jsonl    # Sonnet judge; adds verdicts to the same file
+```
+
+`run.py --worker https://<your-worker>.workers.dev` sends the questions through a deployed Worker instead. Every prompt change gets a run, committed in the same PR. Details in `evals/README.md`.
 
 ## Run the Worker tests
 
