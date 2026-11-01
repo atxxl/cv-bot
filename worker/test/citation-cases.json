@@ -1,0 +1,162 @@
+{
+  "description": "Citation parser examples shared by worker/test/citations.test.ts (extractCitations in worker/src/citations.ts) and evals/test_checks.py (its port in evals/common.py), so both are tested on the same cases. File names are invented. material: the files that exist and how many lines each has (ids file#1 to file#n). citations: what the Worker returns as citations. not_expanded: range-shaped text inside brackets that the Worker does not expand, as written; evals/checks.py fails an answer for each one.",
+  "material": { "x": 20, "y": 9, "x-y": 3 },
+  "cases": [
+    {
+      "name": "en dash",
+      "answer": "Fixed the pipeline [x#8–x#14].",
+      "citations": ["x#8", "x#9", "x#10", "x#11", "x#12", "x#13", "x#14"],
+      "not_expanded": []
+    },
+    {
+      "name": "hyphen",
+      "answer": "Fixed the pipeline [x#8-x#14].",
+      "citations": ["x#8", "x#9", "x#10", "x#11", "x#12", "x#13", "x#14"],
+      "not_expanded": []
+    },
+    {
+      "name": "en dash with spaces",
+      "answer": "Fixed the pipeline [x#8 – x#14].",
+      "citations": ["x#8", "x#9", "x#10", "x#11", "x#12", "x#13", "x#14"],
+      "not_expanded": []
+    },
+    {
+      "name": "through",
+      "answer": "Fixed the pipeline [x#8 through x#14].",
+      "citations": ["x#8", "x#9", "x#10", "x#11", "x#12", "x#13", "x#14"],
+      "not_expanded": []
+    },
+    {
+      "name": "to",
+      "answer": "Fixed the pipeline [x#8 to x#14].",
+      "citations": ["x#8", "x#9", "x#10", "x#11", "x#12", "x#13", "x#14"],
+      "not_expanded": []
+    },
+    {
+      "name": "en dash, end written as a bare line number",
+      "answer": "Fixed the pipeline [x#8–14].",
+      "citations": ["x#8", "x#9", "x#10", "x#11", "x#12", "x#13", "x#14"],
+      "not_expanded": []
+    },
+    {
+      "name": "hyphen, end written as a bare line number",
+      "answer": "Fixed the pipeline [x#8-14].",
+      "citations": ["x#8", "x#9", "x#10", "x#11", "x#12", "x#13", "x#14"],
+      "not_expanded": []
+    },
+    {
+      "name": "8 lines, the longest range that is expanded",
+      "answer": "Listed the limits [y#2–y#9].",
+      "citations": ["y#2", "y#3", "y#4", "y#5", "y#6", "y#7", "y#8", "y#9"],
+      "not_expanded": []
+    },
+    {
+      "name": "9 lines is dropped",
+      "answer": "Listed the limits [x#1–x#9].",
+      "citations": [],
+      "not_expanded": ["x#1–x#9"]
+    },
+    {
+      "name": "9 lines written with a word is dropped, endpoints included",
+      "answer": "Listed the limits [x#1 through x#9].",
+      "citations": [],
+      "not_expanded": ["x#1 through x#9"]
+    },
+    {
+      "name": "reversed range is dropped",
+      "answer": "Fixed the pipeline [x#14–x#8].",
+      "citations": [],
+      "not_expanded": ["x#14–x#8"]
+    },
+    {
+      "name": "reversed range written with a word is dropped, endpoints included",
+      "answer": "Fixed the pipeline [x#14 to x#8].",
+      "citations": [],
+      "not_expanded": ["x#14 to x#8"]
+    },
+    {
+      "name": "start equal to the end is dropped",
+      "answer": "Fixed the pipeline [x#8–x#8].",
+      "citations": [],
+      "not_expanded": ["x#8–x#8"]
+    },
+    {
+      "name": "range across two files is dropped",
+      "answer": "Fixed the pipeline [x#3–y#5].",
+      "citations": [],
+      "not_expanded": ["x#3–y#5"]
+    },
+    {
+      "name": "range across two files written with a word is dropped, endpoints included",
+      "answer": "Fixed the pipeline [x#3 to y#5].",
+      "citations": [],
+      "not_expanded": ["x#3 to y#5"]
+    },
+    {
+      "name": "range from a file into a hyphenated file name is across two files",
+      "answer": "Fixed the pipeline [x#2-x-y#3].",
+      "citations": [],
+      "not_expanded": ["x#2-x-y#3"]
+    },
+    {
+      "name": "range inside a hyphenated file name",
+      "answer": "Fixed the pipeline [x-y#1-x-y#3].",
+      "citations": ["x-y#1", "x-y#2", "x-y#3"],
+      "not_expanded": []
+    },
+    {
+      "name": "a single id and a range in one bracket",
+      "answer": "Built it [x#3, y#5–y#7].",
+      "citations": ["x#3", "y#5", "y#6", "y#7"],
+      "not_expanded": []
+    },
+    {
+      "name": "range first keeps the written order, and repeated ids count once",
+      "answer": "Built it [y#5–y#7, x#3] and tested it [y#6; x#3].",
+      "citations": ["y#5", "y#6", "y#7", "x#3"],
+      "not_expanded": []
+    },
+    {
+      "name": "a dropped range does not take the single id next to it",
+      "answer": "Built it [x#2, x#1–x#20].",
+      "citations": ["x#2"],
+      "not_expanded": ["x#1–x#20"]
+    },
+    {
+      "name": "ids past the end of the file are filtered out of the expansion",
+      "answer": "Wrote it up [x#18–x#23].",
+      "citations": ["x#18", "x#19", "x#20"],
+      "not_expanded": []
+    },
+    {
+      "name": "range in a file that is not in the material cites nothing",
+      "answer": "Wrote it up [z#1–z#3].",
+      "citations": [],
+      "not_expanded": []
+    },
+    {
+      "name": "em dash is not a range form the Worker reads",
+      "answer": "Fixed the pipeline [x#8—x#14].",
+      "citations": [],
+      "not_expanded": ["x#8—x#14"]
+    },
+    {
+      "name": "a range outside brackets is not a citation",
+      "answer": "Lines x#8–x#14 say so.",
+      "citations": [],
+      "not_expanded": []
+    },
+    {
+      "name": "a list of two ids is not a range",
+      "answer": "Fixed the pipeline [x#8, x#14].",
+      "citations": ["x#8", "x#14"],
+      "not_expanded": []
+    },
+    {
+      "name": "a token that only looks like a hyphenated range is not a range",
+      "answer": "Fixed the pipeline [x#10-year].",
+      "citations": [],
+      "not_expanded": []
+    }
+  ]
+}

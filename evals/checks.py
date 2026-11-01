@@ -4,9 +4,14 @@
 A run file written by ``run.py`` holds one record per question. Each record is
 checked against the question it answers:
 
-- every kind: no range citation such as ``[mai#3–mai#5]`` and no citation of an
-  id that is not in the material. The Worker keeps only tokens that are exactly
-  one existing id, so both leave the claim without its quote in the widget;
+- every kind: no range citation that the Worker does not expand, and no
+  citation of an id that is not in the material. The Worker expands a short
+  range such as ``[mai#3–mai#5]`` to one id per line (same file, start lower
+  than end, at most 8 lines; see ``worker/src/citations.ts``), so such a range
+  passes and each id in it is checked like a single citation. A range it drops
+  (too long, reversed, across two files, or a form it does not read, such as an
+  em dash) fails, and so does an unknown id: both leave the claim without its
+  quote in the widget;
 - ``grounded``: cites at least one line id that exists, and one whose file stem
   is the question's ``expect.cite_prefix`` when that is given;
 - ``not_done``: contains a plain negative (not, no, never, none, nothing, n't, ...);
@@ -49,7 +54,7 @@ from common import (
     RUNS_DIR,
     EvalError,
     extract_citations,
-    range_citations,
+    unexpanded_ranges,
     unknown_citations,
 )
 
@@ -82,9 +87,9 @@ def check_answer(question: dict, answer: str, material_ids: frozenset[str] | set
     kind = question["kind"]
     expect = question.get("expect") or {}
 
-    # Citation format, every kind. Both are dropped by the Worker's parser.
-    for group in range_citations(answer):
-        failures.append(f"range citation [{group}]")
+    # Citation format, every kind. The Worker's parser drops both.
+    for text, reason in unexpanded_ranges(answer):
+        failures.append(f"range citation [{text}]: {reason}")
     unknown = unknown_citations(answer, material_ids)
     if unknown:
         failures.append("cites id(s) not in the material: " + ", ".join(unknown))
