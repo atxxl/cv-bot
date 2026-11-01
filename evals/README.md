@@ -12,7 +12,7 @@ The evaluation set and the scripts that run it. Python 3.11 or newer; standard l
 | `checks.py` | The hard checks. Checks a run file, or (what CI runs) validates the inputs and reports the newest run. |
 | `judge.py` | The Sonnet judge: faithfulness 0–2 and tone 0–1 per answer, with a verdict per citation. Adds a `judge` object to each record of a run file. |
 | `common.py` | Shared pieces: the material with its line ids (through `scripts/bundle_material.py`), the system block exactly as the Worker builds it, the Worker's citation parser, the price table. |
-| `test_*.py` | Unit tests with made-up material, questions and answers. No API calls. |
+| `test_*.py` | Unit tests with made-up material, questions and answers. No API calls. One test checks that the rules `prompts/judge.md` quotes are still in `prompts/system.md` under the same numbers. |
 | `runs/` | Committed run files. Every prompt change gets one (CLAUDE.md). |
 | `requirements.txt` | `anthropic`, for the two scripts that call the API. |
 
@@ -70,7 +70,7 @@ A record with no model answer fails, and so does a question with no record. All 
 
 ## Judge (`judge.py`)
 
-The rubric is `prompts/judge.md`, versioned; its short sha256 and title are recorded on every verdict. The judge model is `claude-sonnet-5-5`. For each answer the judge receives:
+The rubric is `prompts/judge.md`, versioned; its short sha256 and title are recorded on every verdict. Since v2 it quotes, by rule number, the parts of `prompts/system.md` that require the bot to say something ("she"/"her CV", the contact sentence, the scope sentence, refusals) and tells the judge that those sentences are not claims about the owner; a change to either prompt that breaks a quote fails `test_judge.py`. The judge model is `claude-sonnet-5-5`. For each answer the judge receives:
 
 - as the system block, the rubric followed by the whole material with line ids (same shape as the answer model's block, cached across the run);
 - as the user turn, the question, the answer, the exact text of every line the answer cited, and separately any cited id that does not exist and any citation written as a range.

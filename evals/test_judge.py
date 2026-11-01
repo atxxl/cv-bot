@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
 """Tests for the parts of evals/judge.py that need no API: prompt assembly and verdict parsing.
 
-Made-up material and answers only; no network, no key.
+Made-up material and answers only; no network, no key. One test reads ``prompts/judge.md`` and
+``prompts/system.md`` to check that the judge prompt's quotes of the system prompt's rules still match.
 """
 
 from __future__ import annotations
 
 import json
+import re
 import unittest
 
 import common
@@ -72,6 +74,49 @@ class VerdictParsingTest(unittest.TestCase):
 
     def test_schema_lists_every_required_field(self) -> None:
         self.assertEqual(set(judge.VERDICT_SCHEMA["required"]), set(self.GOOD))
+
+
+def system_prompt_sections(text: str) -> dict[str, str]:
+    """``prompts/system.md`` split into ``"opening"`` (everything before rule 1) and ``"1"``.. (each numbered rule,
+    up to the next rule, blank line or heading)."""
+    sections: dict[str, list[str]] = {"opening": []}
+    current: str | None = "opening"
+    for line in text.splitlines():
+        numbered = re.match(r"^(\d+)\. ", line)
+        if numbered:
+            current = numbered.group(1)
+            sections[current] = []
+        elif current != "opening" and (not line.strip() or line.startswith("#")):
+            current = None
+        if current is not None:
+            sections[current].append(line)
+    return {key: "\n".join(lines) for key, lines in sections.items()}
+
+
+class JudgePromptQuotesSystemPromptTest(unittest.TestCase):
+    """``prompts/judge.md`` quotes the rules of ``prompts/system.md`` that require sentences the judge must not
+    count as claims. Each quote must still be in the system prompt, under the same rule number, word for word,
+    so that a change to either prompt that breaks the pairing fails here. Reads the two prompt files, not the material."""
+
+    QUOTE = re.compile(r"^> (?:Opening paragraph|Rule (\d+)): (.+)$")
+
+    def test_every_quote_is_in_the_system_prompt_under_its_number(self) -> None:
+        sections = system_prompt_sections(common.SYSTEM_PROMPT_PATH.read_text(encoding="utf-8"))
+        quotes = [m for line in common.JUDGE_PROMPT_PATH.read_text(encoding="utf-8").splitlines() if (m := self.QUOTE.match(line))]
+        self.assertGreaterEqual(len(quotes), 6, "prompts/judge.md should quote the opening paragraph and rules 1-5")
+        self.assertEqual({m.group(1) or "opening" for m in quotes}, {"opening", "1", "2", "3", "4", "5"})
+        for match in quotes:
+            with self.subTest(quote=match.group(0)):
+                section = match.group(1) or "opening"
+                self.assertIn(section, sections, f"prompts/system.md has no rule {section}")
+                self.assertIn(match.group(2), sections[section])
+
+    def test_sections_parser(self) -> None:
+        sections = system_prompt_sections("# T\n\nIntro says she.\n\nRules:\n\n1. One. Two.\n2. Three.\n\n## Other\n\nNot a rule.\n")
+        self.assertIn("Intro says she.", sections["opening"])
+        self.assertEqual(sections["1"], "1. One. Two.")
+        self.assertEqual(sections["2"], "2. Three.")
+        self.assertNotIn("Not a rule.", "".join(sections.values()))
 
 
 class ReportTest(unittest.TestCase):
