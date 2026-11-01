@@ -247,6 +247,66 @@ class CheckRecordAndRunTest(unittest.TestCase):
         self.assertIn("FAIL g1 (grounded): cites no existing line id", checks.format_failures(results))
 
 
+class LatestRunTest(unittest.TestCase):
+    """``common.latest_run``: newest by the ``run_at`` in the file; the name's date only when there is none."""
+
+    def setUp(self) -> None:
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.runs = Path(tmp.name)
+
+    def write(self, name: str, run_at: str | None = None) -> Path:
+        record: dict = {"id": "g1", "answer": "Widget [sample#2].", "refused": False, "error": None}
+        if run_at is not None:
+            record["run_at"] = run_at
+        path = self.runs / name
+        common.write_jsonl(path, [record, {**record, "id": "i1"}])
+        return path
+
+    def test_both_name_styles_newest_by_run_at(self) -> None:
+        # By filename alone `20261030-` sorts last ('1' > '-'); run_at says the 2026-10-31 run is newest.
+        self.write("20261028-1ba42d2.jsonl")
+        self.write("20261030-f09bbc7.jsonl")
+        self.write("2026-10-30-3733663.jsonl", "2026-10-30T23:23:30+00:00")
+        newest = self.write("2026-10-31-f3aa204.jsonl", "2026-10-31T21:01:36+00:00")
+        self.assertEqual(sorted(self.runs.glob("*.jsonl"))[-1].name, "20261030-f09bbc7.jsonl")
+        self.assertEqual(common.latest_run(self.runs), newest)
+
+    def test_run_at_wins_over_the_date_in_the_name(self) -> None:
+        newest = self.write("2026-10-01-aaaaaaa.jsonl", "2026-11-02T08:00:00+00:00")
+        self.write("2026-11-01-bbbbbbb.jsonl", "2026-11-01T08:00:00+00:00")
+        self.assertEqual(common.latest_run(self.runs), newest)
+
+    def test_without_run_at_the_date_in_either_name_style_counts(self) -> None:
+        self.write("2026-10-31-f3aa204.jsonl", "2026-10-31T21:01:36+00:00")
+        self.write("20261028-1ba42d2.jsonl")
+        newest = self.write("20261101-ccccccc.jsonl")
+        self.assertEqual(common.latest_run(self.runs), newest)
+        newer = self.write("2026-11-02-ddddddd.jsonl")
+        self.assertEqual(common.latest_run(self.runs), newer)
+
+    def test_a_recorded_time_beats_a_name_only_run_of_the_same_day(self) -> None:
+        self.write("20261030-f09bbc7.jsonl")
+        newest = self.write("2026-10-30-3733663.jsonl", "2026-10-30T00:00:01+00:00")
+        self.assertEqual(common.latest_run(self.runs), newest)
+
+    def test_run_at_is_compared_in_utc(self) -> None:
+        newest = self.write("2026-10-31-aaaaaaa.jsonl", "2026-10-31T23:30:00-02:00")  # 01:30 UTC on 1 Nov
+        self.write("2026-11-01-bbbbbbb.jsonl", "2026-11-01T01:00:00+00:00")
+        self.assertEqual(common.latest_run(self.runs), newest)
+
+    def test_undated_and_unreadable_files(self) -> None:
+        self.assertIsNone(common.latest_run(self.runs))
+        undated = self.write("scratch.jsonl")
+        self.assertEqual(common.latest_run(self.runs), undated)
+        broken = self.runs / "2026-01-03-ccccccc.jsonl"
+        broken.write_text("{broken\n", encoding="utf-8")
+        self.assertIsNone(common.run_recorded_at(broken))
+        self.assertEqual(common.latest_run(self.runs), broken)  # by its name; checks.py then reports it as malformed
+        self.write("other.jsonl", "not a time")
+        self.assertEqual(common.latest_run(self.runs), broken)
+
+
 class MainTest(unittest.TestCase):
     """The command line, end to end on temporary made-up inputs."""
 
@@ -310,6 +370,14 @@ class MainTest(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertIn("2026-01-02-bbbbbbb.jsonl", out)
         self.assertIn("reported, not gating", out)
+
+    def test_report_mode_picks_the_newest_run_by_run_at(self) -> None:
+        self.write_run("20261030-aaaaaaa.jsonl", [{"id": "g1", "answer": "Widget [sample#2].", "refused": False, "error": None}])
+        self.write_run("2026-10-31-bbbbbbb.jsonl", [{"id": "i1", "answer": "No.", "refused": False, "error": None, "run_at": "2026-10-31T21:01:36+00:00"}])
+        code, out, _ = self.run_main()
+        self.assertEqual(code, 0)
+        self.assertIn("2026-10-31-bbbbbbb.jsonl", out)
+        self.assertNotIn("20261030-aaaaaaa.jsonl", out)
 
     def test_malformed_run_file_fails_even_in_report_mode(self) -> None:
         (self.runs / "2026-01-03-ccccccc.jsonl").write_text("{broken\n", encoding="utf-8")

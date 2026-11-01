@@ -66,7 +66,7 @@ Every record is checked against its question; a record passes when every applica
 
 A record with no model answer fails, and so does a question with no record. All matching is against the answer text, not the `citations` field, so a Worker run is checked the same way as a direct run.
 
-`python evals/checks.py RUN` exits 1 on any failure. `python evals/checks.py` without a run file validates `questions.jsonl` and `forbidden.txt`, then reports the newest run under `runs/` without gating on it; it exits 1 only for a malformed input file. CI runs the second form plus the unit tests: the question set must be well formed, and what the model answered is a report for the owner, not a gate.
+`python evals/checks.py RUN` exits 1 on any failure. `python evals/checks.py` without a run file validates `questions.jsonl` and `forbidden.txt`, then reports the newest run under `runs/` without gating on it (newest by the `run_at` its records carry; only a file without `run_at` falls back to the date in its name, `20261030-<sha>` or `2026-10-31-<sha>`); it exits 1 only for a malformed input file. CI runs the second form plus the unit tests: the question set must be well formed, and what the model answered is a report for the owner, not a gate.
 
 ## Judge (`judge.py`)
 

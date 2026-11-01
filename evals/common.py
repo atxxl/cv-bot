@@ -11,7 +11,8 @@
   silently drops.
 - The price table from ``worker/src/model.ts`` (and the judge model's), with
   the same cost formula.
-- Small helpers: JSONL in and out, sha256 prefixes, git metadata, the API key.
+- Small helpers: JSONL in and out, the newest run file (by ``run_at``), sha256
+  prefixes, git metadata, the API key.
 
 Standard library only. ``anthropic`` is imported by ``run.py`` and ``judge.py``
 inside the functions that call the API, so the checks and the tests never need it.
@@ -26,6 +27,7 @@ import re
 import subprocess
 import sys
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Iterable, Sequence
 
@@ -258,10 +260,73 @@ def write_jsonl(path: Path, records: Iterable[dict]) -> None:
     os.replace(tmp, path)
 
 
+# The date at the start of a run file's name, in either style that has been
+# committed: ``20261030-<sha>.jsonl`` (early runs) or ``2026-10-31-<sha>.jsonl``
+# (``run.py``'s ``default_run_path``). The backreference keeps the separators consistent.
+_RUN_NAME_DATE = re.compile(r"^(\d{4})(-?)(\d{2})\2(\d{2})(?![0-9])")
+_OLDEST = datetime.min.replace(tzinfo=timezone.utc)
+
+
+def _parse_run_at(value: object) -> datetime | None:
+    """A record's ``run_at`` as an aware datetime (naive is taken as UTC), or None if absent or unparsable."""
+    if not isinstance(value, str):
+        return None
+    try:
+        parsed = datetime.fromisoformat(value)
+    except ValueError:
+        return None
+    return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
+
+
+def run_recorded_at(path: Path) -> datetime | None:
+    """The newest ``run_at`` among the records of a run file, or None when no record has one.
+
+    Lines that are not JSON objects are skipped here; ``read_jsonl`` reports them
+    when the file is actually read.
+    """
+    newest: datetime | None = None
+    try:
+        with path.open(encoding="utf-8") as fh:
+            for raw in fh:
+                try:
+                    record = json.loads(raw)
+                except ValueError:
+                    continue
+                if not isinstance(record, dict):
+                    continue
+                run_at = _parse_run_at(record.get("run_at"))
+                if run_at is not None and (newest is None or run_at > newest):
+                    newest = run_at
+    except (OSError, UnicodeDecodeError):
+        return None
+    return newest
+
+
+def run_name_date(path: Path) -> datetime | None:
+    """The date at the start of a run file's name, as midnight UTC that day, or None."""
+    match = _RUN_NAME_DATE.match(path.name)
+    if not match:
+        return None
+    year, _, month, day = match.groups()
+    try:
+        return datetime(int(year), int(month), int(day), tzinfo=timezone.utc)
+    except ValueError:
+        return None
+
+
 def latest_run(runs_dir: Path = RUNS_DIR) -> Path | None:
-    """The newest ``*.jsonl`` under ``evals/runs/`` by filename (they start with the date), or None."""
-    runs = sorted(p for p in runs_dir.glob("*.jsonl") if p.is_file())
-    return runs[-1] if runs else None
+    """The newest ``*.jsonl`` under ``evals/runs/``, or None.
+
+    Newest by the ``run_at`` its records carry (``run.py`` writes it on every
+    record). Only a file with no ``run_at`` falls back to the date in its name
+    (``20261030-<sha>`` or ``2026-10-31-<sha>``), read as midnight UTC that day,
+    so a run that recorded its time wins over a name-only run of the same day.
+    A file with neither sorts as the oldest. Ties go to the later filename.
+    """
+    runs = [p for p in runs_dir.glob("*.jsonl") if p.is_file()]
+    if not runs:
+        return None
+    return max(runs, key=lambda p: (run_recorded_at(p) or run_name_date(p) or _OLDEST, p.name))
 
 
 # -- misc -------------------------------------------------------------------------------
