@@ -39,10 +39,15 @@ class JudgeInputTest(unittest.TestCase):
         text = judge.build_judge_input({"question": "q", "answer": "Not done."}, MATERIAL)
         self.assertIn("The answer cites no line of the material.", text)
 
-    def test_unknown_ids_and_ranges_are_listed_separately(self) -> None:
-        text = judge.build_judge_input({"question": "q", "answer": "X [sample#9]. Y [sample#1–sample#2]."}, MATERIAL)
+    def test_unknown_ids_and_dropped_ranges_are_listed_separately(self) -> None:
+        text = judge.build_judge_input({"question": "q", "answer": "X [sample#9]. Y [sample#2–sample#1]."}, MATERIAL)
         self.assertIn("## Cited ids that are not in the material (they support nothing)\nsample#9", text)
-        self.assertIn("## Citations written as a range (they cite nothing)\n[sample#1–sample#2]", text)
+        self.assertIn("## Citations written as a range (they cite nothing)\n[sample#2–sample#1]", text)
+
+    def test_an_expanded_range_is_quoted_line_by_line(self) -> None:
+        text = judge.build_judge_input({"question": "q", "answer": "A widget [sample#1–sample#2]."}, MATERIAL)
+        self.assertIn("## Cited lines\nsample#1: # Sample project\nsample#2: Built a widget that counts purple umbrellas.", text)
+        self.assertNotIn("range", text)
 
     def test_system_block_is_rubric_then_material(self) -> None:
         system = judge.build_judge_system("# Judge prompt vX\n\nRubric.\n", MATERIAL)

@@ -6,9 +6,9 @@
   so the ids and the hash are exactly the ones bundled into the Worker.
 - The system block assembled exactly as ``worker/src/worker.ts``
   (``buildSystemBlock``) assembles it.
-- The citation parser ported from ``worker/src/citations.ts``, plus the
-  detection of range citations such as ``[mai#3–mai#5]`` that the Worker
-  silently drops.
+- The citation parser ported from ``worker/src/citations.ts`` (including its
+  expansion of short ranges such as ``[mai#3–mai#5]``), plus the detection of
+  range citations that the Worker does not expand.
 - The price table from ``worker/src/model.ts`` (and the judge model's), with
   the same cost formula.
 - Small helpers: JSONL in and out, the newest run file (by ``run_at``), sha256
@@ -126,10 +126,22 @@ BRACKET_GROUP = re.compile(r"\[([^\[\]]{1,300})\]")
 TOKEN_SPLIT = re.compile(r"[\s,;]+")
 ID_SHAPED = re.compile(r"^[A-Za-z0-9_.-]*#[0-9]+[A-Za-z0-9_.#-]*$")
 
-# A span of ids written as a range: `mai#3–mai#5`, `mai#3-mai#5`, `mai#3 - 5`,
-# `mai#3 to mai#5`. The Worker keeps only tokens that are exactly one id, so a
-# range cites nothing and the claim it follows is shown without a quote.
-RANGE_CITATION = re.compile(
+# The Worker's range rule (worker/src/citations.ts, RANGE and expandRange): a
+# start id, then a hyphen or en dash (spaces optional) or the word `to` or
+# `through` (spaces required), then an end id or a bare line number, standing
+# alone between separators. It is expanded to one id per line when both ends are
+# in the same file, the start is lower than the end, and it covers at most
+# MAX_RANGE_LINES lines; otherwise it is dropped whole, endpoints included.
+MAX_RANGE_LINES = 8
+MAX_SAFE_INTEGER = 2**53 - 1  # Number.isSafeInteger in the Worker
+WORKER_RANGE = re.compile(
+    r"(?<![^\s,;])([A-Za-z0-9_.-]+)#([0-9]+)(?:\s*[-\u2013]\s*|\s+(?:to|through)\s+)(?:([A-Za-z0-9_.-]+)#)?([0-9]+)(?![^\s,;])"
+)
+
+# Anything else that looks like a span of ids: `mai#3—mai#5`, `mai#3 — mai#5`,
+# `mai#3 To mai#5`, a range glued to other text. The Worker does not read these
+# as ranges, so they are never expanded.
+RANGE_SHAPED = re.compile(
     r"[A-Za-z0-9_.-]+#[0-9]+\s*(?:-|–|—|−|‒|to|through)\s*(?:[A-Za-z0-9_.-]+#)?[0-9]+",
     re.IGNORECASE,
 )
@@ -140,14 +152,51 @@ def bracket_groups(answer: str) -> list[str]:
     return [m.group(1) for m in BRACKET_GROUP.finditer(answer)]
 
 
+def _tokens(text: str) -> list[str]:
+    return [token.strip() for token in TOKEN_SPLIT.split(text)]
+
+
+def expand_range(match: re.Match) -> tuple[list[str], str]:
+    """The ids a WORKER_RANGE match expands to, and why it is dropped ('' when it is not)."""
+    file, start_text, end_file, end_text = match.groups()
+    start, end = int(start_text), int(end_text)
+    if end_file is not None and end_file != file:
+        return [], "spans two files; the Worker drops it"
+    if start > MAX_SAFE_INTEGER or end > MAX_SAFE_INTEGER:
+        return [], "line number too large; the Worker drops it"
+    if start >= end:
+        return [], "the end is not after the start; the Worker drops it"
+    if end - start > MAX_RANGE_LINES - 1:
+        return [], f"{end - start + 1} lines; the Worker expands at most {MAX_RANGE_LINES} and drops it"
+    return [f"{file}#{line}" for line in range(start, end + 1)], ""
+
+
+def _split_group(group: str) -> list[str | re.Match]:
+    """One bracket as the Worker reads it: the text between ranges (str) and the ranges (WORKER_RANGE matches), in order."""
+    parts: list[str | re.Match] = []
+    rest = 0
+    for match in WORKER_RANGE.finditer(group):
+        parts.extend([group[rest:match.start()], match])
+        rest = match.end()
+    parts.append(group[rest:])
+    return parts
+
+
+def bracket_ids(group: str) -> list[str]:
+    """Port of ``idsInBracket``: every token in one bracket, in order, ranges replaced by their expansion."""
+    ids: list[str] = []
+    for part in _split_group(group):
+        ids.extend(_tokens(part) if isinstance(part, str) else expand_range(part)[0])
+    return ids
+
+
 def extract_citations(answer: str, known_ids: Iterable[str]) -> list[str]:
     """Exactly what the Worker returns as ``citations``: ids that exist, in order, deduplicated."""
     known = set(known_ids)
     found: list[str] = []
     seen: set[str] = set()
     for group in bracket_groups(answer):
-        for token in TOKEN_SPLIT.split(group):
-            line_id = token.strip()
+        for line_id in bracket_ids(group):
             if not LINE_ID.match(line_id) or line_id not in known or line_id in seen:
                 continue
             seen.add(line_id)
@@ -155,20 +204,35 @@ def extract_citations(answer: str, known_ids: Iterable[str]) -> list[str]:
     return found
 
 
-def range_citations(answer: str) -> list[str]:
-    """Every range written inside a citation bracket, as the text of the bracket."""
-    return [group for group in bracket_groups(answer) if RANGE_CITATION.search(group)]
+def unexpanded_ranges(answer: str) -> list[tuple[str, str]]:
+    """Every range inside a citation bracket that the Worker does not expand: (the range as written, why)."""
+    found: list[tuple[str, str]] = []
+    for group in bracket_groups(answer):
+        for part in _split_group(group):
+            if isinstance(part, str):
+                found.extend((m.group(0), "not a range form the Worker reads") for m in RANGE_SHAPED.finditer(part))
+                continue
+            ids, reason = expand_range(part)
+            if not ids:
+                found.append((part.group(0), reason))
+    return found
 
 
 def unknown_citations(answer: str, known_ids: Iterable[str]) -> list[str]:
-    """Id-shaped tokens inside brackets that are not a line of the material (the Worker drops them)."""
+    """Cited ids that are not a line of the material (the Worker drops them).
+
+    Id-shaped tokens, plus the ids of every range the Worker expands. The ends of
+    a range the Worker drops whole are not counted here; ``unexpanded_ranges``
+    reports that range.
+    """
     known = set(known_ids)
     unknown: list[str] = []
     for group in bracket_groups(answer):
-        for token in TOKEN_SPLIT.split(group):
-            token = token.strip()
-            if token and ID_SHAPED.match(token) and token not in known and token not in unknown:
-                unknown.append(token)
+        for part in _split_group(group):
+            candidates = [t for t in _tokens(part) if ID_SHAPED.match(t)] if isinstance(part, str) else expand_range(part)[0]
+            for line_id in candidates:
+                if line_id not in known and line_id not in unknown:
+                    unknown.append(line_id)
     return unknown
 
 

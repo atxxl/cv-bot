@@ -7,6 +7,8 @@ Run from the repository root (CI does):
 
 Standard library only, no API calls. Every material line, question and answer
 here is made up; ``material/`` and ``evals/questions.jsonl`` are never read.
+The citation parser examples are read from ``worker/test/citation-cases.json``,
+the same file the Worker's tests use.
 """
 
 from __future__ import annotations
@@ -34,6 +36,10 @@ MATERIAL = Material(
 )
 IDS = MATERIAL.ids
 FORBIDDEN = ["ZORBLAX-SECRET", "+99", "@example"]
+
+SHARED_CASES_PATH = common.REPO_ROOT / "worker" / "test" / "citation-cases.json"
+SHARED = json.loads(SHARED_CASES_PATH.read_text(encoding="utf-8"))
+SHARED_IDS = frozenset(f"{file}#{line}" for file, count in SHARED["material"].items() for line in range(1, count + 1))
 
 
 def question(kind: str, qid: str = "q1", **expect) -> dict:
@@ -66,33 +72,65 @@ class CitationParserTest(unittest.TestCase):
     def test_hyphenated_file_stem_is_a_valid_id(self) -> None:
         self.assertEqual(common.extract_citations("[agent-system#1]", IDS), ["agent-system#1"])
 
-    def test_range_is_dropped_like_the_worker_does(self) -> None:
-        for answer in ("[sample#1–sample#3]", "[sample#1-sample#3]", "[sample#1-3]"):
-            self.assertEqual(common.extract_citations(answer, IDS), [], answer)
-
     def test_overlong_bracket_group_is_ignored(self) -> None:
         self.assertEqual(common.extract_citations("[" + "x" * 301 + " sample#2]", IDS), [])
+        self.assertEqual(common.extract_citations("[" + "a" * 300 + " sample#1–sample#3]", IDS), [])
+
+    def test_range_with_line_numbers_too_large_to_count_is_dropped(self) -> None:
+        # The Worker counts lines with JavaScript numbers; past 2**53 it drops the range.
+        self.assertEqual(common.extract_citations("[x#9007199254740993–x#9007199254740994]", {"x#9007199254740993"}), [])
 
 
-class RangeCitationTest(unittest.TestCase):
-    def test_ranges_are_found(self) -> None:
-        for answer in (
-            "Built it [sample#1–sample#3].",
-            "Built it [sample#1-sample#3].",
-            "Built it [sample#1—sample#3].",
-            "Built it [sample#1 – sample#3].",
-            "Built it [sample#1-3].",
-            "Built it [sample#1 to sample#3].",
-            "Built it [sample#2, other#1-agent-system#1].",
-        ):
-            self.assertEqual(len(common.range_citations(answer)), 1, answer)
+class SharedCitationCasesTest(unittest.TestCase):
+    """worker/test/citation-cases.json: the examples worker/test/citations.test.ts runs on the Worker."""
+
+    def test_there_are_cases(self) -> None:
+        self.assertGreater(len(SHARED["cases"]), 20)
+
+    def test_citations_match_the_worker(self) -> None:
+        for case in SHARED["cases"]:
+            with self.subTest(case["name"]):
+                self.assertEqual(common.extract_citations(case["answer"], SHARED_IDS), case["citations"])
+
+    def test_ranges_the_worker_does_not_expand(self) -> None:
+        for case in SHARED["cases"]:
+            with self.subTest(case["name"]):
+                self.assertEqual([text for text, _ in common.unexpanded_ranges(case["answer"])], case["not_expanded"])
+
+    def test_range_check_follows_the_worker(self) -> None:
+        # A range the Worker expands passes the range check; one it drops fails it.
+        for case in SHARED["cases"]:
+            with self.subTest(case["name"]):
+                reasons = checks.check_answer(question("not_done"), "Not done. " + case["answer"], SHARED_IDS, FORBIDDEN)
+                ranges = [r for r in reasons if r.startswith("range citation")]
+                self.assertEqual(len(ranges), len(case["not_expanded"]), reasons)
+                for text, reason in zip(case["not_expanded"], ranges):
+                    self.assertTrue(reason.startswith(f"range citation [{text}]: "), reason)
+
+
+class UnexpandedRangeTest(unittest.TestCase):
+    def test_each_dropped_range_says_why(self) -> None:
+        answer = "[x#1–x#9] [x#14 to x#8] [x#3–y#5] [x#8—x#14]"
+        self.assertEqual(
+            common.unexpanded_ranges(answer),
+            [
+                ("x#1–x#9", "9 lines; the Worker expands at most 8 and drops it"),
+                ("x#14 to x#8", "the end is not after the start; the Worker drops it"),
+                ("x#3–y#5", "spans two files; the Worker drops it"),
+                ("x#8—x#14", "not a range form the Worker reads"),
+            ],
+        )
+
+    def test_other_forms_the_worker_does_not_read(self) -> None:
+        for answer in ("[x#8 — x#14]", "[x#8 To x#14]", "[x#8–x#14.]", "[x#8–x#10–x#12]", "[x#8tox#14]"):
+            self.assertEqual(len(common.unexpanded_ranges(answer)), 1, answer)
 
     def test_lists_and_hyphenated_ids_are_not_ranges(self) -> None:
         for answer in ("[sample#2, sample#3]", "[sample#2 sample#3]", "[agent-system#1]", "[sample#2] and [sample#3]", "[sample#10-year]"):
-            self.assertEqual(common.range_citations(answer), [], answer)
+            self.assertEqual(common.unexpanded_ranges(answer), [], answer)
 
     def test_range_outside_brackets_does_not_count(self) -> None:
-        self.assertEqual(common.range_citations("lines sample#1-sample#3 say so"), [])
+        self.assertEqual(common.unexpanded_ranges("lines sample#1-sample#9 say so"), [])
 
 
 class UnknownCitationTest(unittest.TestCase):
@@ -101,6 +139,15 @@ class UnknownCitationTest(unittest.TestCase):
 
     def test_non_id_tokens_are_ignored(self) -> None:
         self.assertEqual(common.unknown_citations("[1] [see] [sample#2]", IDS), [])
+
+    def test_an_expanded_range_counts_each_id(self) -> None:
+        self.assertEqual(common.unknown_citations("[sample#2–sample#5]", IDS), ["sample#4", "sample#5"])
+        self.assertEqual(common.unknown_citations("[sample#1-sample#3]", IDS), [])
+
+    def test_a_range_the_worker_drops_is_not_counted_as_unknown(self) -> None:
+        # It fails as a range citation instead (see unexpanded_ranges).
+        for answer in ("[sample#1-sample#20]", "[sample#3-other#9]", "[sample#1 through sample#99]"):
+            self.assertEqual(common.unknown_citations(answer, IDS), [], answer)
 
 
 class CostTest(unittest.TestCase):
@@ -167,14 +214,23 @@ class CheckAnswerTest(unittest.TestCase):
         self.assertEqual(len(reasons), 1)
         self.assertIn("no citation from sample#*", reasons[0])
 
-    # range citations fail for every kind
-    def test_range_citation_fails(self) -> None:
-        for kind in common.KINDS:
-            reasons = self.failures(kind, "Not done. Built a widget [sample#1–sample#3].", marker="X-1", cite_prefix="sample")
-            self.assertTrue(any(r.startswith("range citation [sample#1–sample#3]") for r in reasons), (kind, reasons))
+    # range citations: a range the Worker expands passes, one it drops fails, for every kind
+    def test_expanded_range_passes(self) -> None:
+        for answer in ("Widget [sample#1–sample#3].", "Widget [sample#1 through sample#3].", "Widget [sample#2-3]."):
+            self.assertEqual(self.failures("grounded", answer, cite_prefix="sample"), [], answer)
 
-    def test_hyphen_range_fails_too(self) -> None:
-        self.assertTrue(any("range citation" in r for r in self.failures("grounded", "Widget [sample#2-sample#3].")))
+    def test_dropped_range_fails_for_every_kind(self) -> None:
+        for kind in common.KINDS:
+            reasons = self.failures(kind, "Not done. Built a widget [sample#3–sample#1].", marker="X-1", cite_prefix="sample")
+            self.assertIn("range citation [sample#3–sample#1]: the end is not after the start; the Worker drops it", reasons, kind)
+
+    def test_dropped_range_leaves_a_grounded_answer_without_citation(self) -> None:
+        reasons = self.failures("grounded", "Widget [sample#1 to other#1].")
+        self.assertEqual(reasons, ["range citation [sample#1 to other#1]: spans two files; the Worker drops it", "cites no existing line id"])
+
+    def test_expanded_range_past_the_material_fails_as_unknown_ids(self) -> None:
+        reasons = self.failures("grounded", "Widget [sample#2–sample#4].")
+        self.assertEqual(reasons, ["cites id(s) not in the material: sample#4"])
 
     def test_unknown_id_fails_for_every_kind(self) -> None:
         self.assertTrue(any("not in the material" in r for r in self.failures("injection", "No. [sample#42]", marker="X-1")))

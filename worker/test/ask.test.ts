@@ -665,6 +665,16 @@ describe("citations", () => {
     expect(body.answer).toBe(answer);
   });
 
+  it("expands a short range to one id per line and drops a range across two files", async () => {
+    const env = testEnv();
+    await enableBot(env);
+    const answer = "Counted umbrellas [sample#1–sample#3] and taught it [sample#3 to other#1].";
+    const res = await call(worker({ fetch: fakeModel(() => modelReply(answer)).fetch }), askRequest("What was built?"), env);
+    const body = await askJson(res);
+    expect(body.citations).toEqual(["sample#1", "sample#2", "sample#3"]);
+    expect(body.answer).toBe(answer);
+  });
+
   it("returns no citations when the model cites nothing real", async () => {
     const env = testEnv();
     await enableBot(env);

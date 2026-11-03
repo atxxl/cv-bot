@@ -39,7 +39,7 @@ Useful flags: `run.py --ids g01,n04 --out /tmp/x.jsonl` for a cheap trial; `judg
 - system block: `prompts/system.md`, a blank line, `# Material`, a blank line, then one `id: text` line per bundled material line (`common.build_system_block`, a port of `buildSystemBlock`); marked for prompt caching as the Worker marks it;
 - model `claude-haiku-4-5-20251001`, `max_tokens` 600, `temperature` 0, API version `2023-06-01`. The installed SDK defaults to API version `2026-10-21`, which rejects `temperature`, so both are overridden per request to match the Worker;
 - the material comes from `material/*.md` through the bundler, so the ids and the hash are the ones in `worker/src/material.ts`; the run refuses to start if that file is out of date;
-- `citations` is computed with the Worker's parser (`common.extract_citations`, a port of `worker/src/citations.ts`): existing ids, in order, deduplicated.
+- `citations` is computed with the Worker's parser (`common.extract_citations`, a port of `worker/src/citations.ts`): short ranges expanded (see below), then existing ids, in order, deduplicated.
 
 `--worker URL` posts each question to `URL/ask` and records what the Worker returned (`answer`, `citations`, `refused`, `material_hash`). Token counts and cost are not available in this mode. The Worker's rate limit (10 questions per 10 minutes per IP) is respected by sleeping for `retry-after` on 429, so a full run takes about half an hour.
 
@@ -58,7 +58,7 @@ Every record is checked against its question; a record passes when every applica
 
 | Applies to | Check |
 | --- | --- |
-| every kind | no citation written as a range (`[mai#3–mai#5]`, `[mai#3-mai#5]`, `[mai#3-5]`, `[mai#3 to mai#5]`) and no citation of an id that is not in the material. The Worker keeps only tokens that are exactly one existing id, so either leaves the claim without its quote in the widget |
+| every kind | no range citation that the Worker drops, and no citation of an id that is not in the material; either leaves the claim without its quote in the widget. The Worker expands a short range to one id per line: `[mai#3–mai#5]`, `[mai#3-mai#5]`, `[mai#3 – mai#5]`, `[mai#3 through mai#5]`, `[mai#3 to mai#5]`, `[mai#3–5]` (also `[mai#3-5]`), when both ends are in the same file, the start is lower than the end and the range covers at most 8 lines. Such a range passes, and each id in it is checked like a single citation. A range that is longer, reversed or across two files is dropped whole, endpoints included, and fails; so does any other range-shaped citation the Worker does not read as a range (an em dash `[mai#3—mai#5]`, `[mai#3 To mai#5]`). The examples both parsers are tested on are in `worker/test/citation-cases.json` |
 | `grounded` | cites at least one existing line id; when the question has `expect.cite_prefix`, at least one cited id is from that file |
 | `not_done` | contains a plain negative: `not`, `no`, `never`, `none`, `nothing`, `neither`, `nor`, `cannot` or a `n't` contraction, as whole words |
 | `out_of_scope` | contains no string from `forbidden.txt`, matched as written (case-sensitive) |
@@ -73,7 +73,7 @@ A record with no model answer fails, and so does a question with no record. All 
 The rubric is `prompts/judge.md`, versioned; its short sha256 and title are recorded on every verdict. Since v2 it quotes, by rule number, the parts of `prompts/system.md` that require the bot to say something ("she"/"her CV", the contact sentence, the scope sentence, refusals) and tells the judge that those sentences are not claims about the owner; a change to either prompt that breaks a quote fails `test_judge.py`. The judge model is `claude-sonnet-5-5`. For each answer the judge receives:
 
 - as the system block, the rubric followed by the whole material with line ids (same shape as the answer model's block, cached across the run);
-- as the user turn, the question, the answer, the exact text of every line the answer cited, and separately any cited id that does not exist and any citation written as a range.
+- as the user turn, the question, the answer, the exact text of every line the answer cited (a short range counts as citing each of its lines, as in the Worker), and separately any cited id that does not exist and any range citation the Worker does not expand.
 
 It returns JSON enforced by a schema: `faithfulness` (0–2: does every claim appear in the cited lines, checked citation by citation), `tone` (0–1), `citations` (one `{id, supports, note}` per cited id), `unsupported_claims`, `notes`. A plain negative or refusal with no claims scores 2 on faithfulness; the whole material is there so the judge can tell a miscited claim from an invented one and can catch a negative the material contradicts.
 

@@ -9,10 +9,11 @@ The rubric is ``prompts/judge.md`` (versioned; its short sha256 is recorded on
 every verdict). The judge's system block is the rubric followed by the whole
 material with line ids, in the same shape the answer model sees. The user turn
 holds the question, the answer, the exact text of every line the answer cited
-(``common.extract_citations``, the Worker's parser), and separately any cited
-id that is not in the material and any citation written as a range, so the
-judge checks each citation against the specific line it points at. The verdict
-is JSON enforced with a schema (``output_config.format``).
+(``common.extract_citations``, the Worker's parser, which expands short
+ranges), and separately any cited id that is not in the material and any range
+the Worker does not expand, so the judge checks each citation against the
+specific line it points at. The verdict is JSON enforced with a schema
+(``output_config.format``).
 
 Usage:
     python evals/judge.py evals/runs/<file>.jsonl            # judge records without a verdict
@@ -73,7 +74,7 @@ def build_judge_input(record: dict, material: Material) -> str:
     answer = record.get("answer") or ""
     cited = common.extract_citations(answer, material.ids)
     unknown = common.unknown_citations(answer, material.ids)
-    ranges = common.range_citations(answer)
+    ranges = [text for text, _reason in common.unexpanded_ranges(answer)]
 
     parts = ["## Question", record["question"], "", "## Answer", answer, "", "## Cited lines"]
     if cited:
