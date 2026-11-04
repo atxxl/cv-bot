@@ -4,7 +4,9 @@
 
 import { SELF } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
+import { WIDGET_CACHE_VERSIONED, widgetVersion } from "../src/assets";
 import { MATERIAL, MATERIAL_HASH } from "../src/material";
+import { WIDGET_CSS, WIDGET_JS } from "../src/widget";
 
 describe("entrypoint", () => {
   it("serves the bundled material hash", async () => {
@@ -18,6 +20,37 @@ describe("entrypoint", () => {
     expect(res.status).toBe(200);
     expect(res.headers.get("cache-control")).toBe("public, max-age=3600");
     expect(await res.json()).toEqual({ hash: MATERIAL_HASH, lines: MATERIAL });
+  });
+
+  it("serves web/widget.js as JavaScript", async () => {
+    const res = await SELF.fetch("https://cv-bot.example/widget.js");
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toBe("text/javascript; charset=utf-8");
+    const body = await res.text();
+    expect(body).toBe(WIDGET_JS);
+    // The real file, not an empty or placeholder module.
+    expect(body).toMatch(/^\/\* cv-bot widget/);
+    expect(body).toContain('getElementById("cv-bot")');
+  });
+
+  it("serves web/widget.css as CSS", async () => {
+    const res = await SELF.fetch("https://cv-bot.example/widget.css");
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toBe("text/css; charset=utf-8");
+    const body = await res.text();
+    expect(body).toBe(WIDGET_CSS);
+    expect(body).toMatch(/^\/\* cv-bot widget/);
+    expect(body).toContain("#cv-bot {");
+  });
+
+  it("versions both widget files by the bundled material hash and the files", async () => {
+    const version = await widgetVersion(MATERIAL_HASH, WIDGET_JS, WIDGET_CSS);
+    for (const path of ["/widget.js", "/widget.css"]) {
+      const res = await SELF.fetch(`https://cv-bot.example${path}?v=${version}`);
+      expect(res.status).toBe(200);
+      expect(res.headers.get("etag")).toBe(`"${version}"`);
+      expect(res.headers.get("cache-control")).toBe(WIDGET_CACHE_VERSIONED);
+    }
   });
 
   it("returns 404 for anything else", async () => {

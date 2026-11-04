@@ -7,8 +7,9 @@
 #   npx wrangler secret put ANTHROPIC_API_KEY
 # For local development put them in worker/.dev.vars (gitignored).
 #
-# Runtime switches live in the SPEND KV namespace, not here (see docs/setup.md):
-#   enabled         "1" or the bot answers nothing
+# Runtime switches live in the SPEND KV namespace, not here (see docs/setup.md;
+# day-to-day operations in docs/runbook.md):
+#   enabled         "1" or the bot answers nothing ("false" is the kill switch)
 #   material_hash   must equal the MATERIAL_HASH bundled into the deployed Worker
 #   spend_cap_usd   monthly USD ceiling
 #   spend_<yyyy-mm> running total, written by the Worker
@@ -18,10 +19,12 @@ main = "src/index.ts"
 compatibility_date = "2026-10-01"
 account_id = "<fill-in>"
 
-# prompts/system.md is bundled into the Worker as a text module.
+# prompts/system.md and the widget (web/widget.js, web/widget.css) are bundled
+# into the Worker as text modules, so what it serves is exactly the files in
+# the repo.
 [[rules]]
 type = "Text"
-globs = ["**/*.md"]
+globs = ["**/*.md", "**/web/widget.js", "**/web/widget.css"]
 fallthrough = true
 
 # Rate limit state: per-IP counters, 10 questions / 10 minutes.
