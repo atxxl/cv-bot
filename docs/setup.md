@@ -104,17 +104,19 @@ The Worker answers only when four values in the `SPEND` namespace say it may. An
 
 ```sh
 cd worker
-npx wrangler kv key put --binding SPEND enabled 1                 # anything but "1" switches the bot off
-npx wrangler kv key put --binding SPEND spend_cap_usd 5           # monthly USD ceiling, decimal string
-npx wrangler kv key put --binding SPEND material_hash <hash>      # the MATERIAL_HASH in worker/src/material.ts
+npx wrangler kv key put --remote --preview false --binding SPEND enabled 1                 # anything but "1" switches the bot off
+npx wrangler kv key put --remote --preview false --binding SPEND spend_cap_usd 5           # monthly USD ceiling, decimal string
+npx wrangler kv key put --remote --preview false --binding SPEND material_hash <hash>      # the MATERIAL_HASH in worker/src/material.ts
 ```
 
-- `enabled`: the kill switch. `npx wrangler kv key put --binding SPEND enabled 0` stops the bot immediately, no deploy needed.
+`--remote --preview false` is required: wrangler 4 writes to local dev storage unless given `--remote`, and refuses to pick between `id` and `preview_id` unless given `--preview false` (production) or `--preview` (dev). Day-to-day operations (kill switch, cap, key rotation, logs) are in `docs/runbook.md`.
+
+- `enabled`: the kill switch. `npx wrangler kv key put --remote --preview false --binding SPEND enabled false` stops the bot within about a minute, no deploy needed.
 - `spend_cap_usd`: the Worker refuses a question when this month's total plus a worst-case estimate of the next call would exceed it. Any model error leaves the total unchanged.
 - `material_hash`: pins the material version that may answer. The Worker compares it with the hash bundled at deploy time and refuses on mismatch, so a deploy that does not match what you approved answers nothing until you update the pin. Read the current hash with `python scripts/bundle_material.py --check` (it prints it) or from `worker/src/material.ts`.
-- `spend_<yyyy-mm>` (for example `spend_2026-10`, UTC month): the running total in USD, written by the Worker. Read it with `npx wrangler kv key get --binding SPEND spend_2026-10`; delete it to reset a month. You never need to set it.
+- `spend_<yyyy-mm>` (for example `spend_2026-10`, UTC month): the running total in USD, written by the Worker. Read it with `npx wrangler kv key get --remote --preview false --binding SPEND spend_2026-10`; delete it to reset a month. You never need to set it.
 
-Add `--preview` to the commands above to set the same keys for `wrangler dev`. Per-IP rate-limit counters live in the `RATE_LIMIT` namespace under `ip:<sha256 of the ip>` and expire on their own after the window.
+For `wrangler dev`, run the same commands with `--preview` in place of `--remote --preview false`: local dev reads the local store of the `preview_id` namespaces. Per-IP rate-limit counters live in the `RATE_LIMIT` namespace under `ip:<sha256 of the ip>` and expire on their own after the window.
 
 ## Run locally
 
@@ -154,8 +156,8 @@ Open <http://localhost:8000/demo.html>. `CF-Connecting-IP` needs nothing from yo
 
 ```sh
 cd worker
-npm run deploy                                                    # wrangler deploy
-npx wrangler kv key put --binding SPEND material_hash <hash>      # when the material changed
+npm run deploy                                                                        # wrangler deploy
+npx wrangler kv key put --remote --preview false --binding SPEND material_hash <hash>  # when the material changed
 ```
 
 After a deploy that changed `material/`, update the pin or the bot stays off. Order does not matter: between the two commands the Worker refuses with "not available right now" rather than answering from unpinned material.
@@ -168,6 +170,7 @@ After a deploy that changed `material/`, update the pin or the bot stays off. Or
 | same, refused (bad input `400`, origin `403`, rate limit `429`, everything else `503`) | `{"answer": "<short reason or Not available right now.>", "citations": [], "refused": true, "material_hash"}` |
 | `GET /material-hash` | `200 {"hash": "..."}` |
 | `GET /material` | `200 {"hash": "...", "lines": [{"id": "mai#1", "text": "..."}, ...]}`, the whole bundled material; `cache-control: public, max-age=3600`; no rate limit, no log line |
+| `GET /widget.js`, `GET /widget.css` | `200`, the files in `web/` as bundled at deploy time; `ETag: "<version>"`; `cache-control` immutable for a year when `?v=` is the current version, 5 minutes otherwise; `304` on a matching `If-None-Match`; no KV, no rate limit, no log line, served while the kill switch is off. `web/embed.md` |
 | anything else | `404` |
 
 The Worker logs one JSON line per `/ask`: question length, refusal flag and reason, latency, token counts, cost. Never the question or the answer.

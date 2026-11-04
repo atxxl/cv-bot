@@ -9,18 +9,21 @@ The chat widget embedded in the CV page. Vanilla JS, no framework, no build step
 | `widget.js` | The widget. Finds `#cv-bot`, reads `data-worker-url`, renders the input, the answer area and the footer, talks to the Worker. |
 | `widget.css` | Its styles, all scoped to `#cv-bot`. System fonts only. |
 | `demo.html` | A placeholder page that mounts the widget against `http://localhost:8787` for local testing. No CV content. |
+| `embed.md` | The snippet for the CV page, where it goes, how to check it works. |
 
 `widget.js` + `widget.css` must stay under 12 KB unminified in total; `scripts/test_widget.py` checks that in CI.
 
 ## Embedding
 
+The Worker serves both files itself (`GET /widget.js`, `GET /widget.css`, bundled from this directory at deploy time), so the CV page holds no copy:
+
 ```html
-<link rel="stylesheet" href="widget.css">
+<link rel="stylesheet" href="https://<your-worker>.workers.dev/widget.css?v=<version>">
 <div id="cv-bot" data-worker-url="https://<your-worker>.workers.dev"></div>
-<script src="widget.js" defer></script>
+<script src="https://<your-worker>.workers.dev/widget.js?v=<version>" defer></script>
 ```
 
-The Worker URL is the only configuration. The snippet for the real CV page is issue 7 (Embed); the owner adds it by hand.
+The Worker URL is the only configuration; `?v=` only controls caching. `embed.md` has the details; the owner adds the snippet to the CV page by hand. A change to `widget.js` or `widget.css` reaches the page with the next `wrangler deploy`.
 
 ## What it does
 

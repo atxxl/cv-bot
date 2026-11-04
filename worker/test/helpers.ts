@@ -26,6 +26,9 @@ export const FAKE_MATERIAL: MaterialLine[] = [
 ];
 export const FAKE_HASH = "0123456789ab";
 export const FAKE_PROMPT = "Answer from the material only and cite line ids in square brackets.";
+/** Stand-ins for web/widget.js and web/widget.css. */
+export const FAKE_WIDGET_JS = '(function () { "use strict"; /* fake widget for tests */ })();\n';
+export const FAKE_WIDGET_CSS = "#cv-bot { color: #123456; } /* fake widget styles for tests */\n";
 export const DEFAULT_ANSWER = "A widget that counts purple umbrellas [sample#2].";
 export const DEFAULT_USAGE: Usage = {
   input_tokens: 1000,
@@ -95,6 +98,8 @@ export function worker(overrides: Partial<WorkerDeps> = {}): ExportedHandler<Env
     material: FAKE_MATERIAL,
     materialHash: FAKE_HASH,
     systemPrompt: FAKE_PROMPT,
+    widgetJs: FAKE_WIDGET_JS,
+    widgetCss: FAKE_WIDGET_CSS,
     now: () => NOW,
     ...overrides,
   });
