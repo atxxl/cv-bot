@@ -13,7 +13,22 @@
 //   { hash: string, lines: [{ id: string, text: string }, ...] }
 // so the widget can quote the lines an answer cites. It is public and cheap
 // (no model call, no KV, no rate limit) and cacheable for an hour.
+//
+// GET /widget.js and GET /widget.css serve the widget files bundled from web/,
+// so the CV page loads them from here. Same as /material: no KV, no switches,
+// no log line, so they keep loading while the kill switch (`enabled`) is off
+// and the widget shows "Not available right now." for every question. Caching
+// and versioning are described in assets.ts.
 
+import {
+  WIDGET_CACHE_UNVERSIONED,
+  WIDGET_CACHE_VERSIONED,
+  WIDGET_CONTENT_TYPES,
+  etagMatches,
+  isWidgetPath,
+  widgetVersion,
+  type WidgetPath,
+} from "./assets";
 import { extractCitations } from "./citations";
 import { ConfigError, KV_KEYS, MAX_BODY_BYTES, MAX_QUESTION_CHARS, readAllowedOrigin, readConfig, type Config, type Env } from "./config";
 import {
@@ -35,6 +50,10 @@ export interface WorkerDeps {
   material: readonly MaterialLine[];
   materialHash: string;
   systemPrompt: string;
+  /** web/widget.js, served at GET /widget.js. */
+  widgetJs: string;
+  /** web/widget.css, served at GET /widget.css. */
+  widgetCss: string;
   /** Outbound fetch for the model call. Tests inject a fake. */
   fetch?: typeof fetch;
   /** Clock in epoch ms. Tests inject a fixed one. */
@@ -44,7 +63,7 @@ export interface WorkerDeps {
 export const NOT_AVAILABLE = "Not available right now.";
 /** GET /material changes only with a deploy; an hour of caching keeps repeat visitors from re-fetching it. */
 export const MATERIAL_CACHE_CONTROL = "public, max-age=3600";
-const ROUTES: ReadonlySet<string> = new Set(["/ask", "/material-hash", "/material"]);
+const ROUTES: ReadonlySet<string> = new Set(["/ask", "/material-hash", "/material", "/widget.js", "/widget.css"]);
 const TOO_LONG = `Questions can be at most ${MAX_QUESTION_CHARS} characters.`;
 const BAD_REQUEST = "Please send a question.";
 const RATE_LIMITED = "You have asked several questions in a short time. Please try again in a few minutes.";
@@ -169,9 +188,31 @@ export function createWorker(deps: WorkerDeps): ExportedHandler<Env> {
   const knownIds: ReadonlySet<string> = new Set(deps.material.map((line) => line.id));
   const systemBlock = buildSystemBlock(deps.systemPrompt, deps.material);
   const materialBody = { hash: deps.materialHash, lines: deps.material.map(({ id, text }) => ({ id, text })) };
+  const widgetBodies: Record<WidgetPath, string> = { "/widget.js": deps.widgetJs, "/widget.css": deps.widgetCss };
+  // Computed on first use: WebCrypto is async, and nothing async runs at module load.
+  let version: Promise<string> | null = null;
 
   function log(record: AskLog): void {
     console.log(JSON.stringify(record));
+  }
+
+  async function widgetAsset(path: WidgetPath, url: URL, request: Request, cors: Record<string, string>): Promise<Response> {
+    version ??= widgetVersion(deps.materialHash, deps.widgetJs, deps.widgetCss);
+    const current = await version;
+    const etag = `"${current}"`;
+    const headers: Record<string, string> = {
+      "content-type": WIDGET_CONTENT_TYPES[path],
+      "cache-control": url.searchParams.get("v") === current ? WIDGET_CACHE_VERSIONED : WIDGET_CACHE_UNVERSIONED,
+      etag,
+      "x-content-type-options": "nosniff",
+      ...cors,
+      // Sent even without CORS headers because the response is cacheable.
+      vary: "Origin",
+    };
+    if (etagMatches(request.headers.get("if-none-match"), etag)) {
+      return new Response(null, { status: 304, headers });
+    }
+    return new Response(widgetBodies[path], { status: 200, headers });
   }
 
   async function ask(request: Request, env: Env, cors: Record<string, string>): Promise<Response> {
@@ -346,6 +387,9 @@ export function createWorker(deps: WorkerDeps): ExportedHandler<Env> {
         // Public material, no switches, no KV, no log line. `Vary: Origin` is
         // sent even without CORS headers because the response is cacheable.
         return json(200, materialBody, { ...cors, vary: "Origin", "cache-control": MATERIAL_CACHE_CONTROL });
+      }
+      if (isWidgetPath(route) && request.method === "GET") {
+        return widgetAsset(route, url, request, cors);
       }
       if (route === "/ask" && request.method === "POST") {
         return ask(request, env, cors);
