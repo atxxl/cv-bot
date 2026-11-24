@@ -23,7 +23,7 @@ export interface MaterialLine {
 }
 
 /** sha256 of the bundled source files (sorted, newline-normalised), first 12 hex chars. */
-export const MATERIAL_HASH: string = "fdbe0a4590af";
+export const MATERIAL_HASH: string = "349b261c06f6";
 
 export const MATERIAL: MaterialLine[] = [
   { id: "about#1", text: "# Outside work" },
@@ -101,11 +101,15 @@ export const MATERIAL: MaterialLine[] = [
   { id: "education#6", text: "- BSc Computer Science, University of Copenhagen (KU), 2021, completed in Danish: algorithms, databases, data modeling, probability, participatory design and software development." },
   { id: "education#7", text: "- I wrote and defended my BSc thesis in 2019 and completed the BSc degree in 2021." },
   { id: "education#8", text: "- Exchange at Peking University, 2019: courses in technology and human-centric design, Affective Intelligent Robotics, and Humanism in the AI Era." },
-  { id: "education#9", text: "## Theses" },
-  { id: "education#10", text: "- MSc thesis (DTU, 2024): Interpretable Sentiment Analysis with Concept Bottleneck Models. It has its own material file." },
-  { id: "education#11", text: "- BSc thesis (University of Copenhagen, 2019): Approach for Designing Moral Machine. I compared top-down (rule-based) and bottom-up (learned from data) approaches to building a machine that makes moral choices in trolley-problem dilemmas." },
-  { id: "education#12", text: "- For the bottom-up part of my BSc thesis I trained decision trees in Python on the public Moral Machine dataset (MIT Media Lab; 38 million rows): a depth-4 tree reached 69% accuracy and largely matched the global preferences reported in the original study, and an unconstrained tree reached 73%." },
-  { id: "education#13", text: "- In my BSc thesis I chose a white-box model deliberately and argued that algorithms with large social impact should stay comprehensible." },
+  { id: "education#9", text: "## Relevant coursework at DTU" },
+  { id: "education#10", text: "- I took 02456 Deep Learning, 02806 Social Data Analysis and Visualization, and 02805 Social Graphs and Interactions as a student at DTU, and later worked as a teaching assistant on all three." },
+  { id: "education#11", text: "- Other DTU courses behind my course projects: 02517 Responsible AI: Algorithmic Fairness and Explainability, 34760 Safety and Reliability in Robotic and Automation Systems, 02582 Computational Data Analysis, and 02476 Machine Learning Operations." },
+  { id: "education#12", text: "- I also took 02807 Computational Tools for Data Science at DTU." },
+  { id: "education#13", text: "## Theses" },
+  { id: "education#14", text: "- MSc thesis (DTU, 2024): Interpretable Sentiment Analysis with Concept Bottleneck Models. It has its own material file." },
+  { id: "education#15", text: "- BSc thesis (University of Copenhagen, 2019): Approach for Designing Moral Machine. I compared top-down (rule-based) and bottom-up (learned from data) approaches to building a machine that makes moral choices in trolley-problem dilemmas." },
+  { id: "education#16", text: "- For the bottom-up part of my BSc thesis I trained decision trees in Python on the public Moral Machine dataset (MIT Media Lab; 38 million rows): a depth-4 tree reached 69% accuracy and largely matched the global preferences reported in the original study, and an unconstrained tree reached 73%." },
+  { id: "education#17", text: "- In my BSc thesis I chose a white-box model deliberately and argued that algorithms with large social impact should stay comprehensible." },
   { id: "mai#1", text: "# mAI (now 1-to-X.ai) — AI Engineer internship, 2026" },
   { id: "mai#2", text: "Role: AI Engineer intern at mAI (now 1-to-X.ai), a platform that generates business software through an agentic LLM pipeline. Stack: Python backend, Next.js/TypeScript frontend, PostgreSQL. The product serves 50+ customers." },
   { id: "mai#3", text: "## What I built" },

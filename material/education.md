@@ -10,6 +10,12 @@ Summary: MSc in Human-Centered Artificial Intelligence from the Technical Univer
 - I wrote and defended my BSc thesis in 2019 and completed the BSc degree in 2021.
 - Exchange at Peking University, 2019: courses in technology and human-centric design, Affective Intelligent Robotics, and Humanism in the AI Era.
 
+## Relevant coursework at DTU
+
+- I took 02456 Deep Learning, 02806 Social Data Analysis and Visualization, and 02805 Social Graphs and Interactions as a student at DTU, and later worked as a teaching assistant on all three.
+- Other DTU courses behind my course projects: 02517 Responsible AI: Algorithmic Fairness and Explainability, 34760 Safety and Reliability in Robotic and Automation Systems, 02582 Computational Data Analysis, and 02476 Machine Learning Operations.
+- I also took 02807 Computational Tools for Data Science at DTU.
+
 ## Theses
 
 - MSc thesis (DTU, 2024): Interpretable Sentiment Analysis with Concept Bottleneck Models. It has its own material file.
